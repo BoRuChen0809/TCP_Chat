@@ -64,6 +64,7 @@ func (cli *Chat_Client) StartReceive() {
 			break
 		} else if err != nil { //其他錯誤
 			log.Println(err)
+			break
 		}
 
 		if cmd != nil {
@@ -80,4 +81,8 @@ func (cli *Chat_Client) StartReceive() {
 //關閉連線
 func (cli *Chat_Client) Close() {
 	cli.conn.Close()
+}
+
+func (cli *Chat_Client) Msgs() chan My_cmd.BroadcastCommand {
+	return cli.msgs
 }
