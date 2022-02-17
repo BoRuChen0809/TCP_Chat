@@ -22,6 +22,9 @@ func (r *CommandReader) Read() (interface{}, error) {
 	}
 
 	switch cmd {
+	case "ChangeRoom ":
+		msg, err := r.reader.ReadString('\n')
+		return My_cmd.ChangeRoomCommand{ID: msg[:len(msg)-1]}, err
 	case "Send ":
 		msg, err := r.reader.ReadString('\n')
 		return My_cmd.SendMsgCommand{Msg: msg[:len(msg)-1]}, err

@@ -26,6 +26,9 @@ func (cmdWriter *CommandWriter) Write(cmd interface{}) (err error) {
 	case My_cmd.BroadcastCommand:
 		_, err = cmdWriter.writer.Write([]byte(fmt.Sprintf("Broadcast %v %v\n", msg.Name, msg.Msg)))
 		return
+	case My_cmd.ChangeRoomCommand:
+		_, err = cmdWriter.writer.Write([]byte(fmt.Sprintf("ChangeRoom %v\n", msg.ID)))
+		return
 	default:
 		return fmt.Errorf("unknown msg")
 	}

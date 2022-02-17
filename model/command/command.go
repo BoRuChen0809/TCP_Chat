@@ -9,6 +9,11 @@ type SendMsgCommand struct {
 	Msg string
 }
 
+//client use
+type ChangeRoomCommand struct {
+	ID string
+}
+
 // server use
 type BroadcastCommand struct {
 	Name string

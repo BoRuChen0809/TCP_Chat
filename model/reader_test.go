@@ -19,6 +19,7 @@ func Test_Reader(t *testing.T) {
 			cmd_str: "Broadcast BoBo Test Message\n"},
 		{expect: My_cmd.SetNameCommand{Name: "BoBo"}, cmd_str: "SetName BoBo\n"},
 		{expect: My_cmd.SendMsgCommand{Msg: "Test Message"}, cmd_str: "Send Test Message\n"},
+		{expect: My_cmd.ChangeRoomCommand{ID: "Default"}, cmd_str: "ChangeRoom Default\n"},
 	}
 
 	for _, tc := range tt {
