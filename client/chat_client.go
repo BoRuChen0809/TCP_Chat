@@ -13,6 +13,7 @@ type Chat_Client struct {
 	cmdWriter *model.CommandWriter
 	cmdReader *model.CommandReader
 	name      string
+	room_id   string
 	msgs      chan My_cmd.BroadcastCommand
 }
 
@@ -53,6 +54,16 @@ func (cli *Chat_Client) SetName(name string) error {
 //傳訊息
 func (cli *Chat_Client) SendMsg(msg string) error {
 	return cli.cmdWriter.Write(My_cmd.SendMsgCommand{Msg: msg})
+}
+
+//切換聊天室
+func (cli *Chat_Client) ChangeRoom(room_id string) error {
+	err := cli.cmdWriter.Write(My_cmd.ChangeRoomCommand{ID: room_id})
+	if err == nil {
+		cli.room_id = room_id
+		return nil
+	}
+	return err
 }
 
 //接收server廣播
