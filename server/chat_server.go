@@ -20,7 +20,6 @@ type client struct {
 type Chat_Server struct {
 	listner net.Listener
 	mutex   *sync.Mutex
-	//clients   []*client
 	count     uint64
 	chat_room map[string][]*client
 }
@@ -49,16 +48,6 @@ func (s *Chat_Server) Broadcast(cmd interface{}, room_id string) error {
 			log.Printf("Broadcast to %v %v error : %v\n", c.name, c.conn.RemoteAddr().String(), err)
 		}
 	}
-	/*
-		for _, c := range s.clients {
-			if c.room_id == room_id {
-				err := c.writer.Write(cmd)
-				if err != nil {
-					log.Printf("Broadcast to %v %v error : %v\n", c.name, c.conn.RemoteAddr().String(), err)
-				}
-			}
-		}
-	*/
 	return nil
 }
 
@@ -86,8 +75,6 @@ func (s *Chat_Server) accept(conn net.Conn) *client {
 	cli := &client{name: fmt.Sprintf("guest_%d", s.count),
 		conn: conn, writer: *model.NewCmdWriter(conn), room_id: "DEFAULT"}
 
-	//s.clients = append(s.clients, cli)
-
 	log.Printf("Accepting new connection [%v] from %v", cli.name, cli.conn.RemoteAddr().String())
 
 	return cli
@@ -95,13 +82,6 @@ func (s *Chat_Server) accept(conn net.Conn) *client {
 
 //登出client
 func (s *Chat_Server) remove(cli *client) {
-	/*
-		for i, c := range s.clients {
-			if c == cli {
-				s.clients = append(s.clients[:i], s.clients[i+1:]...)
-			}
-		}
-	*/
 	log.Printf("Closing connection [%v] from %v", cli.name, cli.conn.RemoteAddr().String())
 	go s.Broadcast(My_cmd.BroadcastCommand{Name: "SYSTEM", Msg: fmt.Sprintf("%v leave chat room [%v]", cli.name, cli.room_id)}, cli.room_id)
 	cli.conn.Close()
@@ -145,13 +125,6 @@ func (s *Chat_Server) process(cli *client) {
 			}
 		}
 	}
-}
-
-func (s *Chat_Server) createRoom(room_id string) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	s.chat_room[room_id] = []*client{}
 }
 
 func (s *Chat_Server) joinRoom(room_id string, cli *client) {
