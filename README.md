@@ -2,10 +2,11 @@
 用socket練習寫tcp聊天室
 
 主要分四部分:
-- [共用model](#共用model)
-- [Client](#client)
-- [Server](#server)
-- [TUI](#tui)
+- [TCP_Chat](#tcp_chat)
+	- [共用model](#共用model)
+	- [Client](#client)
+	- [Server](#server)
+	- [TUI](#tui)
 
 
 ## 共用model
@@ -43,6 +44,14 @@
     	Name string
     }
     ```
+
+  - 變更聊天室
+	```go
+	//client use
+	type ChangeRoomCommand struct {
+		ID string
+	}
+	```
   
     [command程式碼](https://github.com/BoRuChen0809/TCP_Chat/blob/main/model/command/command.go)
   
@@ -50,30 +59,31 @@
 
   功用:將command轉成指定格式string再將其以byte array格式輸出
 
-  ```go
-  type CommandWriter struct {
-  	writer io.Writer
-  }
-  
-  func (cmdWriter *CommandWriter) Write(cmd interface{}) (err error) {
-  	switch msg := cmd.(type) {
-  	case My_cmd.SetNameCommand:
-  		_, err = cmdWriter.writer.Write([]byte(fmt.Sprintf("SetName %v\n", msg.Name)))
-  		return
-  	case My_cmd.SendMsgCommand:
-  		_, err = cmdWriter.writer.Write([]byte(fmt.Sprintf("Send %v\n", msg.Msg)))
-  		return
-  	case My_cmd.BroadcastCommand:
-  		_, err = cmdWriter.writer.Write([]byte(fmt.Sprintf("Broadcast %v %v\n",
-                                                             msg.Name, msg.Msg)))
-  		return
-  	default:
-  		return fmt.Errorf("unknown msg")
+  	```go
+  	type CommandWriter struct {
+  		writer io.Writer
   	}
   
-  }
+	func (cmdWriter *CommandWriter) Write(cmd interface{}) (err error) {
+		switch msg := cmd.(type) {
+		case My_cmd.SetNameCommand:
+			_, err = cmdWriter.writer.Write([]byte(fmt.Sprintf("SetName %v\n", msg.Name)))
+			return
+		case My_cmd.SendMsgCommand:
+			_, err = cmdWriter.writer.Write([]byte(fmt.Sprintf("Send %v\n", msg.Msg)))
+			return
+		case My_cmd.BroadcastCommand:
+			_, err = cmdWriter.writer.Write([]byte(fmt.Sprintf("Broadcast %v %v\n", msg.Name, msg.Msg)))
+			return
+		case My_cmd.ChangeRoomCommand:
+			_, err = cmdWriter.writer.Write([]byte(fmt.Sprintf("ChangeRoom %v\n", msg.ID)))
+			return
+		default:
+			return fmt.Errorf("unknown msg")
+		}
+	}
   
-  ```
+	```
 
   [writert程式碼](https://github.com/BoRuChen0809/TCP_Chat/blob/main/model/writer.go)
 
@@ -82,39 +92,40 @@
   功用:讀取CmdWriter輸出的byte array並轉為command物件
 
   ```go
-  type CommandReader struct {
-  	reader *bufio.Reader
-  }
-  
-  func (r *CommandReader) Read() (interface{}, error) {
-  	cmd, err := r.reader.ReadString(' ')
-  	if err != nil {
-  		return nil, err
-  	}
-  
-  	switch cmd {
-  	case "Send ":
-  		msg, err := r.reader.ReadString('\n')
-  		return My_cmd.SendMsgCommand{Msg: msg[:len(msg)-1]}, err
-  	case "SetName ":
-  		name, err := r.reader.ReadString('\n')
-  		return My_cmd.SetNameCommand{Name: name[:len(name)-1]}, err
-  	case "Broadcast ":
-  		name, err := r.reader.ReadString(' ')
-  		if err != nil {
-  			return nil, err
-  		}
-  		msg, err := r.reader.ReadString('\n')
-  		if err != nil {
-  			return nil, err
-  		}
-  		return My_cmd.BroadcastCommand{Name: name[:len(name)-1], 
-                                         Msg: msg[:len(msg)-1]}, nil
-  	default:
-  		return nil, fmt.Errorf("nuknown msg")
-  	}
-  
-  }
+	type CommandReader struct {
+		reader *bufio.Reader
+	}
+	
+	func (r *CommandReader) Read() (interface{}, error) {
+		cmd, err := r.reader.ReadString(' ')
+		if err != nil {
+			return nil, err
+		}
+
+		switch cmd {
+		case "ChangeRoom ":
+			msg, err := r.reader.ReadString('\n')
+			return My_cmd.ChangeRoomCommand{ID: msg[:len(msg)-1]}, err
+		case "Send ":
+			msg, err := r.reader.ReadString('\n')
+			return My_cmd.SendMsgCommand{Msg: msg[:len(msg)-1]}, err
+		case "SetName ":
+			name, err := r.reader.ReadString('\n')
+			return My_cmd.SetNameCommand{Name: name[:len(name)-1]}, err
+		case "Broadcast ":
+			name, err := r.reader.ReadString(' ')
+			if err != nil {
+				return nil, err
+			}
+			msg, err := r.reader.ReadString('\n')
+			if err != nil {
+				return nil, err
+			}
+			return My_cmd.BroadcastCommand{Name: name[:len(name)-1], Msg: msg[:len(msg)-1]}, nil
+		default:
+			return nil, fmt.Errorf("nuknown msg")
+		}
+	}
   ```
 
   [reader程式碼](https://github.com/BoRuChen0809/TCP_Chat/blob/main/model/reader.go)
@@ -126,25 +137,27 @@
 - ### 定義client有的動作
 
   ```go
-  type My_Client interface {
-  	Dial(address string) error //連線
-  	SetName(name string) error //設定名字
-  	SendMsg(msg string) error  //傳訊息
-  	StartReceive()             //接收server廣播
-  	Close()                    //關閉連線
-  }
+  	type My_Client interface {
+		Dial(address string) error       //連線
+		SetName(name string) error       //設定名字
+		SendMsg(msg string) error        //傳訊息
+		ChangeRoom(room_id string) error //切換聊天室
+		StartReceive()                   //接收server廣播
+		Close()                          //關閉連線
+	}
   ```
 
 - ### 實現Chat_Client
 
   ```go
-  type Chat_Client struct {
-  	conn      net.Conn
-  	cmdWriter *model.CommandWriter
-  	cmdReader *model.CommandReader
-  	name      string
-  	msgs      chan My_cmd.BroadcastCommand
-  }
+	type Chat_Client struct {
+		conn      net.Conn
+		cmdWriter *model.CommandWriter
+		cmdReader *model.CommandReader
+		name      string
+		room_id   string
+		msgs      chan My_cmd.BroadcastCommand
+	}
   ```
 
   - 連線:
@@ -190,6 +203,18 @@
     	return cli.cmdWriter.Write(My_cmd.SendMsgCommand{Msg: msg})
     }
     ```
+
+  - 切換聊天室
+	```go
+	func (cli *Chat_Client) ChangeRoom(room_id string) error {
+		err := cli.cmdWriter.Write(My_cmd.ChangeRoomCommand{ID: room_id})
+		if err == nil {
+			cli.room_id = room_id
+			return nil
+		}
+		return err
+	}
+	```
 
   - 接收server訊息:
 
@@ -253,19 +278,20 @@
 - ### 實現Chat_server
 
   ```go
-  type Chat_Server struct {
-  	listner net.Listener
-  	mutex   *sync.Mutex
-  	clients []*client
-  	count   uint64
-  }
+  	type Chat_Server struct {
+		listner net.Listener
+		mutex   *sync.Mutex
+		count     uint64
+		chat_room map[string][]*client
+	}
   
-  //用來存client資訊及傳訊息給client
-  type client struct {
-  	conn   net.Conn
-  	name   string
-  	writer model.CommandWriter
-  }
+  	//用來存client資訊及傳訊息給client
+  	type client struct {
+		conn    net.Conn
+		name    string
+		writer  model.CommandWriter
+		room_id string
+	}
   ```
 
   - 監聽port:
@@ -298,20 +324,22 @@
     }
     ```
 
-  - 開始工作(處理client的連線、訊息以及離線):
+  - 開始工作(處理client的連線、訊息、離線以及加入聊天室):
 
     ```go
     func (s *Chat_Server) StartProcess() {
-    	for {
-    		conn, err := s.listner.Accept()
-    		if err != nil {
-    			log.Print(err)
-    		} else {
-    			cli := s.accept(conn) //加入client
-    			go s.process(cli)     //處理client
-    		}
-    	}
-    }
+		for {
+			conn, err := s.listner.Accept()
+			if err != nil {
+				log.Print(err)
+			} else {
+				cli := s.accept(conn) //加入client
+				s.joinRoom(cli.room_id, cli)
+				go s.Broadcast(My_cmd.BroadcastCommand{Name: "SYSTEM", Msg: fmt.Sprintf("%v join chat room [%v]", cli.name, "DEFAULT")}, "DEFAULT")
+				go s.process(cli) //處理client
+			}
+		}
+	}
     ```
 
     server處理client的流程主要是
@@ -325,80 +353,111 @@
     - 加入client:
 
       ```go
-      func (s *Chat_Server) accept(conn net.Conn) *client {
-      	s.mutex.Lock()
-      	defer s.mutex.Unlock()
-      
-      	s.count += 1
-      	cli := &client{name: fmt.Sprintf("guest_%d", s.count),
-      		conn: conn, writer: *model.NewCmdWriter(conn)}
-      
-      	s.clients = append(s.clients, cli)
-      	log.Printf("Accepting new connection [%v] from %v", 
-                     cli.name, cli.conn.RemoteAddr().String())
-      	go s.Broadcast(My_cmd.BroadcastCommand{
-              Name: "SYSTEM", 
-              Msg: fmt.Sprintf("%v join chat room", cli.name)})
-      	return cli
-      }
+		func (s *Chat_Server) accept(conn net.Conn) *client {
+			s.mutex.Lock()
+			defer s.mutex.Unlock()
+
+			s.count += 1
+			cli := &client{name: fmt.Sprintf("guest_%d", s.count),
+				conn: conn, writer: *model.NewCmdWriter(conn), room_id: "DEFAULT"}
+
+			log.Printf("Accepting new connection [%v] from %v", cli.name, cli.conn.RemoteAddr().String())
+
+			return cli
+		}
       ```
 
     - 處理client訊息:
 
       ```go
-      func (s *Chat_Server) process(cli *client) {
-      	cmdReader := model.NewCmdReader(cli.conn)
-      
-      	defer s.remove(cli)
-      
-      	for {
-      		cmd, err := cmdReader.Read()
-      
-      		if err == io.EOF {
-      			break
-      		} else if err != nil {
-      			log.Printf("Read error: %v", err)
-      			break
-      		}
-      
-      		if cmd != nil {
-      			switch msg := cmd.(type) {
-      			case My_cmd.SendMsgCommand:
-      				go s.Broadcast(My_cmd.BroadcastCommand{
-                          Name: cli.name, Msg: msg.Msg})
-      			case My_cmd.SetNameCommand:
-      				old := cli.name
-      				cli.name = msg.Name
-      				go s.Broadcast(My_cmd.BroadcastCommand{
-                          Name: "SYSTEM", 
-                          Msg: fmt.Sprintf("user [%v] change name to [%v]", 
-                                           old, cli.name)})
-      			}
-      		}
-      	}
-      }
+		func (s *Chat_Server) process(cli *client) {
+		cmdReader := model.NewCmdReader(cli.conn)
+		defer s.leaveRoom(cli)
+		defer s.remove(cli)
+
+		for {
+			cmd, err := cmdReader.Read()
+
+			if err == io.EOF {
+				break
+			} else if err != nil {
+				log.Printf("Read error: %v", err)
+				break
+			}
+
+			if cmd != nil {
+				switch msg := cmd.(type) {
+				case My_cmd.SendMsgCommand:
+					go s.Broadcast(My_cmd.BroadcastCommand{Name: cli.name, Msg: msg.Msg}, cli.room_id)
+				case My_cmd.SetNameCommand:
+					old := cli.name
+					cli.name = msg.Name
+					go s.Broadcast(My_cmd.BroadcastCommand{Name: "SYSTEM", Msg: fmt.Sprintf("user [%v] change name to [%v]", old, cli.name)}, cli.room_id)
+				case My_cmd.ChangeRoomCommand:
+					pre_room := cli.room_id
+					s.leaveRoom(cli)
+					go s.Broadcast(My_cmd.BroadcastCommand{Name: "SYSTEM", Msg: fmt.Sprintf("%v leave chat room [%v]", cli.name, pre_room)}, pre_room)
+					if len(s.chat_room[pre_room]) == 0 {
+						s.deleteRoom(pre_room)
+					}
+					cli.room_id = msg.ID
+					go s.Broadcast(My_cmd.BroadcastCommand{Name: "SYSTEM", Msg: fmt.Sprintf("%v join chat room [%v]", cli.name, msg.ID)}, msg.ID)
+					s.joinRoom(msg.ID, cli)
+
+					}
+				}
+			}
+		}
       ```
+	  //client的聊天室相關功能有三個function
+	  ```go
+	  	//加入聊天室
+		func (s *Chat_Server) joinRoom(room_id string, cli *client) {
+			s.mutex.Lock()
+
+			clis := s.chat_room[room_id]
+			clis = append(clis, cli)
+			s.chat_room[room_id] = clis
+			cli.room_id = room_id
+
+			log.Printf("[%v] join chat room [%v]\n", cli.name, cli.room_id)
+
+			s.mutex.Unlock()
+		}
+		//離開聊天室
+		func (s *Chat_Server) leaveRoom(cli *client) {
+			s.mutex.Lock()
+
+			clis := s.chat_room[cli.room_id]
+			for i, c := range clis {
+				if c == cli {
+					clis = append(clis[:i], clis[i+1:]...)
+				}
+			}
+			s.chat_room[cli.room_id] = clis
+
+			log.Printf("[%v] leave chat room [%v]\n", cli.name, cli.room_id)
+			cli.room_id = ""
+
+			s.mutex.Unlock()
+		}
+		//當聊天室人數為0時觸發的移除聊天室
+		func (s *Chat_Server) deleteRoom(room_id string) {
+			s.mutex.Lock()
+			defer s.mutex.Unlock()
+
+			delete(s.chat_room, room_id)
+		}
+	  ```
 
     - client離線:
 
       ```go
-      func (s *Chat_Server) remove(cli *client) {
-      	s.mutex.Lock()
-      	defer s.mutex.Unlock()
-      
-      	for i, c := range s.clients {
-      		if c == cli {
-      			s.clients = append(s.clients[:i], s.clients[i+1:]...)
-      		}
-      	}
-      
-      	log.Printf("Closing connection [%v] from %v", cli.name,
-                     cli.conn.RemoteAddr().String())
-      	go s.Broadcast(My_cmd.BroadcastCommand{
-              Name: "SYSTEM", 
-              Msg: fmt.Sprintf("%v leave chat room", cli.name)})
-      	cli.conn.Close()
-      }
+      	func (s *Chat_Server) remove(cli *client) {
+			log.Printf("Closing connection [%v] from %v", cli.name, cli.conn.RemoteAddr().String())
+			go s.Broadcast(My_cmd.BroadcastCommand{Name: "SYSTEM", Msg: fmt.Sprintf("%v leave chat room [%v]", cli.name, cli.room_id)}, cli.room_id)
+			cli.conn.Close()
+		}
       ```
 
   - server關閉:
